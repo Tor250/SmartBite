@@ -50,7 +50,7 @@ def test_gemini_adapter_posts_json_schema_and_returns_recipe_text():
     assert captured["body"]["systemInstruction"]["parts"][0]["text"] == "Составь рецепт"
     assert captured["body"]["contents"][0]["parts"][0]["text"] == '{"products":["картофель"]}'
     generation_config = captured["body"]["generationConfig"]
-    assert generation_config["responseFormat"]["text"]["mimeType"] == "application/json"
+    assert generation_config["responseFormat"]["text"]["mimeType"] == "APPLICATION_JSON"
     assert generation_config["responseFormat"]["text"]["schema"] == RECIPE_RESPONSE_SCHEMA
     assert generation_config["maxOutputTokens"] == 2048
     assert "secret-key" not in json.dumps(captured["body"])

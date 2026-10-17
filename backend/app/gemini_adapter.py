@@ -31,7 +31,7 @@ class GeminiRecipeJsonClient:
             "generationConfig": {
                 "responseFormat": {
                     "text": {
-                        "mimeType": "application/json",
+                        "mimeType": "APPLICATION_JSON",
                         "schema": RECIPE_RESPONSE_SCHEMA,
                     }
                 },
