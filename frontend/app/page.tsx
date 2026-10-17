@@ -33,7 +33,7 @@ async function responseError(response: Response): Promise<string> {
     if (typeof payload.message === "string") return payload.message;
     if (typeof payload.detail === "string") return payload.detail;
   } catch {
-    // Use the same simple message for invalid or empty error responses.
+    // Для некорректного или пустого ответа с ошибкой показываем одно короткое сообщение.
   }
   return "Не удалось связаться с сервисом. Попробуйте ещё раз.";
 }
@@ -51,8 +51,8 @@ export default function Home() {
     setError("");
     setLoading(true);
     const controller = new AbortController();
-    // Leave a short margin after the backend's 30-second timeout so its
-    // actionable JSON error can reach the form before the browser aborts.
+    // Оставляем небольшой запас после 30-секундного тайм-аута backend,
+    // чтобы браузер успел передать форме понятную JSON-ошибку.
     const timeout = window.setTimeout(() => controller.abort(), 35_000);
     try {
       const response = await fetch(API_URL + "/api/v1/recipes/generate", {

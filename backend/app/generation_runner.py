@@ -44,16 +44,16 @@ class GenerationRunner:
             self._slots.release()
             raise
 
-        # A timed-out caller cannot stop a running thread. Keep its slot until
-        # the worker actually exits, so timeouts do not create hidden backlog.
+        # После тайм-аута вызывающий код не может остановить работающий поток. Освобождаем
+        # его слот только после завершения задачи, чтобы тайм-ауты не создавали скрытую очередь.
         future.add_done_callback(lambda _future: self._slots.release())
         deadline = monotonic() + self._timeout_seconds
         while not future.done():
             remaining = deadline - monotonic()
             if remaining <= 0:
                 raise GenerationTimedOut
-            # Polling avoids coupling the shared executor to one asyncio loop:
-            # the ASGI app and tests may create a fresh loop per request.
+            # Опрос не привязывает общий исполнитель к одному циклу asyncio:
+            # ASGI-приложение и тесты могут создавать новый цикл для каждого запроса.
             await asyncio.sleep(min(0.01, remaining))
 
         return future.result()

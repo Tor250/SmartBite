@@ -13,8 +13,8 @@ _SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
 def configure_logging() -> None:
-    # Uvicorn's default config has no root handler. Give application events a
-    # visible JSON-line destination without lowering unrelated library logs.
+    # В стандартной конфигурации Uvicorn нет корневого обработчика. Направляем
+    # события приложения в доступный журнал JSON-строк, не меняя уровень журналов библиотек.
     logging.basicConfig(level=logging.WARNING, format="%(message)s")
     logger.setLevel(logging.INFO)
     generator_logger.setLevel(logging.INFO)

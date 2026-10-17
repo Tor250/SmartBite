@@ -7,8 +7,8 @@ from dataclasses import dataclass
 import re
 import unicodedata
 
-# Only explicit spelling variants are grouped here. This does not infer hidden
-# ingredients, product derivatives, cross-contamination, or medical suitability.
+# Здесь объединены только явно заданные варианты написания. Проверка не выявляет
+# скрытые ингредиенты, производные продуктов, перекрёстное загрязнение и медицинскую совместимость.
 ALIASES: dict[str, set[str]] = {
     "молоко": {"молоко", "молока", "молоком", "молоке", "коровье молоко", "молочный продукт"},
     "яйцо": {"яйцо", "яйца", "яйцом", "яйцами", "куриное яйцо", "яичный продукт"},

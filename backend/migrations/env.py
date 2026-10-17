@@ -5,7 +5,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.database import Base
-from app import models  # noqa: F401
+from app import models  # noqa: F401 — регистрация моделей в метаданных
 
 config = context.config
 if config.config_file_name and config.attributes.get("configure_logger", True):

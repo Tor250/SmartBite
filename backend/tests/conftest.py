@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app.database import Base
 from app.database import get_db
 from app.main import app
-from app import models  # noqa: F401 - register models with metadata
+from app import models  # noqa: F401 — регистрация моделей в метаданных
 
 
 @pytest.fixture

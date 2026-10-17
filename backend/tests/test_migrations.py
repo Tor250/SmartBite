@@ -7,7 +7,7 @@ from sqlalchemy import create_engine, inspect, text
 
 def _alembic_config(database_url: str) -> Config:
     config = Config("alembic.ini")
-    # Alembic's fileConfig() would replace pytest's process-wide logging handlers.
+    # fileConfig() из Alembic заменил бы глобальные обработчики журналирования pytest.
     config.attributes["configure_logger"] = False
     config.set_main_option("sqlalchemy.url", database_url)
     return config
