@@ -43,6 +43,7 @@ def valid_recipe_payload():
             {"instruction": "Промойте рис.", "duration_minutes": 2},
             {"instruction": "Приготовьте рис с томатами.", "duration_minutes": 18},
         ],
+        "missing_products": [],
     }
 
 
@@ -73,9 +74,13 @@ def test_structured_generator_parses_ingredients_overall_and_step_times_and_trac
     system_instruction, input_json = client.calls[0]
     assert "duration_minutes" in system_instruction
     assert "preparation_time_minutes" in system_instruction
-    assert json.loads(input_json) == {"products": ["рис", "томат"]}
-    assert "без жарки" not in input_json
-    assert "ужин" not in input_json
+    assert json.loads(input_json) == {
+        "products": ["рис", "томат"],
+        "preferences": ["без жарки"],
+        "description": "ужин",
+    }
+    assert "без жарки" in input_json
+    assert "ужин" in input_json
     assert recipe.preparation_time_minutes == 20
     assert [item.name for item in recipe.ingredients] == ["рис", "томат"]
     assert recipe.ingredients[0].quantity == "100 г"
@@ -126,13 +131,38 @@ def test_structured_generator_maps_adapter_failure_to_safe_error():
     assert "secret endpoint" not in str(error.value)
 
 
-def test_structured_generator_requires_supported_mvp_mode_and_products():
+def test_structured_generator_requires_request_data_for_selected_mode():
     generator = StructuredRecipeGenerator(FakeRecipeJsonClient("{}"))
 
-    with pytest.raises(RecipeGenerationError, match="список имеющихся продуктов"):
+    with pytest.raises(RecipeGenerationError, match="пожелания"):
         generator.generate("preferences", ["рис"], [], None)
-    with pytest.raises(RecipeGenerationError, match="список имеющихся продуктов"):
+    with pytest.raises(RecipeGenerationError, match="продукты"):
         generator.generate("from_products", [], [], None)
+
+
+def test_structured_generator_supports_preferences_mode_and_returns_shopping_list():
+    data = valid_recipe_payload()
+    data["missing_products"] = ["томат"]
+    client = FakeRecipeJsonClient(json.dumps(data, ensure_ascii=False))
+
+    recipe = StructuredRecipeGenerator(client).generate(
+        "preferences", ["рис"], ["без мяса"], "быстрый ужин"
+    )
+
+    prompt, input_json = client.calls[0]
+    assert "missing_products" in prompt
+    assert json.loads(input_json)["preferences"] == ["без мяса"]
+    assert recipe.missing_products == ["томат"]
+
+
+@pytest.mark.parametrize("missing", [None, [""], ["x" * 101], ["рис"] * 41])
+def test_structured_generator_rejects_invalid_missing_products(missing):
+    data = valid_recipe_payload()
+    data["missing_products"] = missing
+    generator = StructuredRecipeGenerator(FakeRecipeJsonClient(json.dumps(data, ensure_ascii=False)))
+
+    with pytest.raises(RecipeGenerationError):
+        generator.generate("from_products", ["рис", "томат"], [], None)
 
 
 def test_generator_configuration_uses_demo_until_adapter_is_selected(monkeypatch):

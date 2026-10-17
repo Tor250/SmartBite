@@ -335,6 +335,111 @@ def test_user_can_rate_and_change_rating(api_client):
     assert changed.json()["suitable"] is False
 
 
+def test_user_can_add_like_and_review_to_recipe_rating(api_client):
+    account = register(api_client)
+    headers = auth(account["access_token"])
+    recipe = create_recipe(api_client, headers)
+
+    response = api_client.put(
+        f"/api/recipes/{recipe['id']}/rating",
+        headers=headers,
+        json={"liked": True, "review": "Быстро и вкусно"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["liked"] is True
+    assert response.json()["review"] == "Быстро и вкусно"
+    assert response.json()["suitable"] is None
+
+
+def test_user_can_read_full_generation_history(api_client):
+    account = register(api_client)
+    headers = auth(account["access_token"])
+    first = create_recipe(api_client, headers)
+    second = create_recipe(api_client, headers)
+
+    history = api_client.get("/api/recipes/history", headers=headers)
+
+    assert history.status_code == 200
+    assert {item["id"] for item in history.json()} == {first["id"], second["id"]}
+    assert api_client.get("/api/recipes").status_code == 401
+
+
+def test_signed_in_user_can_generate_and_revisit_wishes_mode(api_client, monkeypatch):
+    import json
+
+    from app import main
+    from app.generator import StructuredRecipeGenerator
+
+    class WishesAdapter:
+        def request_json(self, _system_instruction, _input_json):
+            return json.dumps({
+                "title": "Рис с томатами",
+                "preparation_time_minutes": 20,
+                "ingredients": [
+                    {"name": "рис", "quantity": "100 г"},
+                    {"name": "томат", "quantity": "1 шт."},
+                ],
+                "steps": [{"instruction": "Приготовьте рис с томатом.", "duration_minutes": 20}],
+                "missing_products": ["томат"],
+            }, ensure_ascii=False)
+
+    monkeypatch.setattr(main, "generator", StructuredRecipeGenerator(WishesAdapter()))
+    account = register(api_client)
+    headers = auth(account["access_token"])
+    api_client.put(
+        "/api/profile",
+        headers=headers,
+        json={"preferences": ["без жарки"], "exclusions": []},
+    )
+
+    generated = api_client.post(
+        "/api/recipes/generate",
+        headers=headers,
+        json={"mode": "preferences", "products": ["рис"], "description": "быстрый ужин"},
+    )
+    history = api_client.get("/api/recipes/history", headers=headers)
+
+    assert generated.status_code == 200
+    assert generated.json()["mode"] == "preferences"
+    assert generated.json()["missing_products"] == ["томат"]
+    assert len(history.json()) == 1
+    assert history.json()[0]["mode"] == "preferences"
+    assert history.json()[0]["title"] == "Рис с томатами"
+
+
+def test_user_can_share_recipe_by_revocable_public_link(api_client):
+    account = register(api_client)
+    headers = auth(account["access_token"])
+    recipe = create_recipe(api_client, headers)
+
+    shared = api_client.post(f"/api/recipes/{recipe['id']}/share", headers=headers)
+    assert shared.status_code == 200
+    share_path = shared.json()["share_url"].replace("http://test", "")
+    public_recipe = api_client.get(share_path)
+    assert public_recipe.status_code == 200
+    assert public_recipe.json()["title"] == recipe["title"]
+    assert "email" not in public_recipe.json()
+
+    revoked = api_client.delete(f"/api/recipes/{recipe['id']}/share", headers=headers)
+    after_revoke = api_client.get(share_path)
+    assert revoked.status_code == 204
+    assert after_revoke.status_code == 404
+
+
+def test_user_cannot_share_another_users_recipe(api_client):
+    owner = register(api_client, "owner@example.org")
+    other = register(api_client, "other@example.org")
+    recipe = create_recipe(api_client, auth(owner["access_token"]))
+
+    response = api_client.post(
+        f"/api/recipes/{recipe['id']}/share",
+        headers=auth(other["access_token"]),
+    )
+
+    assert response.status_code == 404
+
+
 def test_d7_events_store_only_account_id_type_and_timestamp(api_client, db_session):
     from app.models import UsageEvent
     from sqlalchemy import select

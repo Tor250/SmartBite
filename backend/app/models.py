@@ -113,6 +113,7 @@ class Recipe(Base):
     description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     title: Mapped[str] = mapped_column(String(200))
     preparation_time_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    share_token: Mapped[str | None] = mapped_column(String(64), unique=True, index=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     user: Mapped[User] = relationship(back_populates="recipes")
@@ -263,7 +264,9 @@ class RecipeRating(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), index=True)
-    suitable: Mapped[bool] = mapped_column(Boolean)
+    suitable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    liked: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    review: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     recipe: Mapped[Recipe] = relationship(back_populates="rating")

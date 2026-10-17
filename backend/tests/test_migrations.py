@@ -89,6 +89,10 @@ def test_normalization_migration_preserves_existing_data(tmp_path, monkeypatch):
         ).all() == [(0, "укроп")]
         assert "preferences" not in {column["name"] for column in inspect(connection).get_columns("profiles")}
         assert "ingredients" not in {column["name"] for column in inspect(connection).get_columns("recipes")}
+        assert "share_token" in {column["name"] for column in inspect(connection).get_columns("recipes")}
+        assert {"liked", "review"} <= {
+            column["name"] for column in inspect(connection).get_columns("recipe_ratings")
+        }
     engine.dispose()
 
 

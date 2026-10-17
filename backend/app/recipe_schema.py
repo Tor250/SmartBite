@@ -27,6 +27,7 @@ RECIPE_RESPONSE_SCHEMA = {
                 "required": ["instruction", "duration_minutes"],
             },
         },
+        "missing_products": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["title", "preparation_time_minutes", "ingredients", "steps"],
+    "required": ["title", "preparation_time_minutes", "ingredients", "steps", "missing_products"],
 }

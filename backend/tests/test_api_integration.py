@@ -59,6 +59,16 @@ def test_mvp_recipe_generation_works_without_account_and_returns_request_id(api_
     assert all("quantity" in item for item in response.json()["ingredients"])
 
 
+def test_anonymous_preferences_generation_marks_products_to_buy(api_client):
+    response = api_client.post(
+        "/api/v1/recipes/generate",
+        json={"mode": "preferences", "products": ["рис"], "description": "быстрый ужин"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["missing_products"] == ["томат", "лук"]
+
+
 def test_browser_preflight_allows_request_correlation_header(api_client):
     response = api_client.request(
         "OPTIONS",
@@ -190,7 +200,11 @@ def test_mvp_api_parses_provider_json_and_correlates_generation(api_client, monk
     assert response.json()["generator"] == "ai"
     assert response.headers["X-Request-ID"] == "trace-api-42"
     assert response.json()["preparation_time_minutes"] == 20
-    assert captured["input"] == {"products": ["рис", "томат"]}
+    assert captured["input"] == {
+        "products": ["рис", "томат"],
+        "preferences": [],
+        "description": None,
+    }
     assert "exclusions" not in captured["input"]
     assert response.json()["steps"][0] == {"instruction": "Промойте рис.", "duration_minutes": 2}
     assert response.json()["steps"][1]["duration_minutes"] == 18
