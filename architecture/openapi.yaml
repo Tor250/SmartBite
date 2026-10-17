@@ -1,0 +1,165 @@
+openapi: 3.1.0
+info:
+  title: SmartBite MVP API
+  version: 1.0.0
+  description: REST API основного сценария. Проверка результата выполняется сервером до ответа клиенту.
+servers:
+  - url: http://localhost:8000
+paths:
+  /api/health:
+    get:
+      summary: Проверить доступность backend
+      responses:
+        '200':
+          description: Backend доступен
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    const: ok
+  /api/v1/recipes/generate:
+    post:
+      summary: Получить рецепт из имеющихся продуктов
+      description: Рецепт возвращается только после проверки ингредиентов по указанным исключениям.
+      operationId: generateRecipeFromProducts
+      parameters:
+        - in: header
+          name: X-Request-ID
+          required: false
+          description: Идентификатор для поиска связанных записей журнала; при отсутствии генерируется backend.
+          schema:
+            type: string
+            maxLength: 64
+            pattern: '^[A-Za-z0-9._-]{1,64}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateRecipeRequest'
+      responses:
+        '200':
+          description: Рецепт прошёл проверку
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recipe'
+        '422':
+          description: Неполный запрос или результат не прошёл проверку
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Error'
+                  - $ref: '#/components/schemas/ValidationError'
+        '503':
+          description: >-
+            Генератор или проверка недоступны, запрос превысил время ожидания
+            либо все четыре слота генерации заняты. Возможные коды: GENERATOR_UNAVAILABLE,
+            GENERATOR_TIMEOUT, GENERATOR_BUSY, SAFETY_CHECK_UNAVAILABLE.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  headers:
+    RequestId:
+      description: Идентификатор запроса, также возвращаемый в журнале backend.
+      schema:
+        type: string
+        maxLength: 64
+  schemas:
+    GenerateRecipeRequest:
+      type: object
+      additionalProperties: false
+      required: [products]
+      properties:
+        products:
+          type: array
+          maxItems: 40
+          items:
+            type: string
+            minLength: 1
+            maxLength: 100
+        exclusions:
+          type: array
+          maxItems: 30
+          items:
+            type: string
+            minLength: 1
+            maxLength: 100
+    Recipe:
+      type: object
+      required: [title, ingredients, preparation_time_minutes, steps, warning, generator]
+      properties:
+        title:
+          type: string
+        ingredients:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [name, quantity]
+            properties:
+              name:
+                type: string
+              quantity:
+                type: [string, 'null']
+        preparation_time_minutes:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 1440
+        steps:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [instruction, duration_minutes]
+            properties:
+              instruction:
+                type: string
+                minLength: 1
+                maxLength: 500
+              duration_minutes:
+                type: [integer, 'null']
+                minimum: 1
+                maximum: 1440
+        warning:
+          type: string
+        generator:
+          type: string
+          enum: [demo, ai]
+    Error:
+      type: object
+      required: [code, message, request_id]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+    ValidationError:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: array
+          items:
+            type: object

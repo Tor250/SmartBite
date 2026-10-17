@@ -1,0 +1,48 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: smartbite
+      POSTGRES_USER: smartbite
+      POSTGRES_PASSWORD: smartbite-local
+    volumes:
+      - smartbite-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smartbite -d smartbite"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://smartbite:smartbite-local@db:5432/smartbite
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      SMARTBITE_GEMINI_MODEL: ${SMARTBITE_GEMINI_MODEL:-gemini-3.5-flash-lite}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      SMARTBITE_QWEN_MODEL: ${SMARTBITE_QWEN_MODEL:-qwen3.8-flash}
+      SMARTBITE_QWEN_BASE_URL: ${SMARTBITE_QWEN_BASE_URL:-https://dashscope-intl.aliyuncs.com/compatible-mode/v1}
+      SMARTBITE_GENERATOR_ADAPTER: ${SMARTBITE_GENERATOR_ADAPTER:-}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  smartbite-data:
