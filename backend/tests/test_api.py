@@ -29,6 +29,32 @@ def test_health_endpoint_reports_api_ready(api_client):
     assert response.json() == {"status": "ok"}
 
 
+def test_analytics_is_private_and_shows_aggregated_recipe_feedback(api_client, db_session, monkeypatch):
+    from app.models import Recipe, RecipeRating
+
+    account = register(api_client, "admin@example.org")
+    other = register(api_client, "cook2@example.org")
+    recipe = Recipe(user_id=other["user_id"], mode="preferences", title="Суп с чечевицей")
+    db_session.add(recipe)
+    db_session.flush()
+    db_session.add(RecipeRating(user_id=other["user_id"], recipe_id=recipe.id, liked=True, suitable=True))
+    db_session.commit()
+
+    monkeypatch.setenv("SMARTBITE_ADMIN_EMAILS", "admin@example.org")
+    response = api_client.get("/api/admin/analytics", headers=auth(account["access_token"]))
+    forbidden = api_client.get("/api/admin/analytics", headers=auth(other["access_token"]))
+
+    assert forbidden.status_code == 403
+    assert response.status_code == 200
+    assert response.json()["users_total"] == 2
+    assert response.json()["recipes_total"] == 1
+    assert response.json()["likes_total"] == 1
+    assert response.json()["popular_recipes"] == [
+        {"title": "Суп с чечевицей", "ratings": 1, "likes": 1, "suitable": 1}
+    ]
+    assert "email" not in response.text
+
+
 def test_registration_rejects_duplicate_account_and_short_password(api_client):
     register(api_client, "same@example.org")
 

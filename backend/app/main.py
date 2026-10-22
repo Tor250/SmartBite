@@ -7,7 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from datetime import timedelta
+
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from .auth_service import login_user, register_user, resolve_session, revoke_session
@@ -148,6 +150,23 @@ class SharedRecipeResponse(BaseModel):
     warning: str
 
 
+class PopularRecipeStat(BaseModel):
+    title: str
+    ratings: int
+    likes: int
+    suitable: int
+
+
+class AnalyticsResponse(BaseModel):
+    users_total: int
+    users_last_30_days: int
+    recipes_total: int
+    ratings_total: int
+    likes_total: int
+    suitable_total: int
+    popular_recipes: list[PopularRecipeStat]
+
+
 class RecipeResponse(BaseModel):
     id: int
     mode: Literal["from_products", "preferences"]
@@ -245,6 +264,59 @@ def _feedback_preferences(db: Session, user_id: int) -> list[str]:
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/admin/analytics", response_model=AnalyticsResponse)
+async def admin_analytics(
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> AnalyticsResponse:
+    admins = {
+        item.strip().casefold()
+        for item in getenv("SMARTBITE_ADMIN_EMAILS", "").split(",")
+        if item.strip()
+    }
+    if user.email.casefold() not in admins:
+        raise HTTPException(status_code=403, detail="Доступ к аналитике закрыт.")
+
+    since = utc_now() - timedelta(days=30)
+    users_total = db.scalar(select(func.count(User.id))) or 0
+    users_recent = db.scalar(select(func.count(User.id)).where(User.created_at >= since)) or 0
+    recipes_total = db.scalar(select(func.count(Recipe.id))) or 0
+    rating_totals = db.execute(
+        select(
+            func.count(RecipeRating.id),
+            func.coalesce(func.sum(case((RecipeRating.liked.is_(True), 1), else_=0)), 0),
+            func.coalesce(func.sum(case((RecipeRating.suitable.is_(True), 1), else_=0)), 0),
+        )
+    ).one()
+    top_recipes = db.execute(
+        select(
+            Recipe.title,
+            func.count(RecipeRating.id).label("ratings"),
+            func.sum(case((RecipeRating.liked.is_(True), 1), else_=0)).label("likes"),
+            func.sum(case((RecipeRating.suitable.is_(True), 1), else_=0)).label("suitable"),
+        )
+        .join(RecipeRating, RecipeRating.recipe_id == Recipe.id)
+        .group_by(Recipe.title)
+        .order_by(
+            func.sum(case((RecipeRating.liked.is_(True), 1), else_=0)).desc(),
+            func.count(RecipeRating.id).desc(),
+        )
+        .limit(5)
+    ).all()
+    return AnalyticsResponse(
+        users_total=users_total,
+        users_last_30_days=users_recent,
+        recipes_total=recipes_total,
+        ratings_total=rating_totals[0],
+        likes_total=rating_totals[1],
+        suitable_total=rating_totals[2],
+        popular_recipes=[
+            PopularRecipeStat(title=row.title, ratings=row.ratings, likes=row.likes, suitable=row.suitable)
+            for row in top_recipes
+        ],
+    )
 
 
 @app.post("/api/v1/recipes/generate", response_model=MvpRecipeResponse)

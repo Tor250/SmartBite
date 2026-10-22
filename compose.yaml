@@ -24,6 +24,7 @@ services:
       SMARTBITE_QWEN_MODEL: ${SMARTBITE_QWEN_MODEL:-qwen3.8-flash}
       SMARTBITE_QWEN_BASE_URL: ${SMARTBITE_QWEN_BASE_URL:-https://dashscope-intl.aliyuncs.com/compatible-mode/v1}
       SMARTBITE_GENERATOR_ADAPTER: ${SMARTBITE_GENERATOR_ADAPTER:-}
+      SMARTBITE_ADMIN_EMAILS: ${SMARTBITE_ADMIN_EMAILS:-}
     ports:
       - "8000:8000"
     healthcheck:

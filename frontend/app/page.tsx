@@ -24,6 +24,15 @@ type Recipe = {
 type HistoryItem = Recipe & { id: number; is_saved: boolean; request_context?: string | null };
 type Mode = Recipe["mode"];
 type Refinement = "clarify" | "adjust" | "replace";
+type Analytics = {
+  users_total: number;
+  users_last_30_days: number;
+  recipes_total: number;
+  ratings_total: number;
+  likes_total: number;
+  suitable_total: number;
+  popular_recipes: { title: string; ratings: number; likes: number; suitable: number }[];
+};
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const EQUIPMENT = ["Плита", "Микроволновка", "Чайник", "Мультиварка", "Блендер", "Духовка"];
@@ -88,6 +97,9 @@ export default function Home() {
   const [shareMessage, setShareMessage] = useState("");
   const [shareLink, setShareLink] = useState("");
   const [notice, setNotice] = useState("");
+  const [canViewAnalytics, setCanViewAnalytics] = useState(false);
+  const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
 
   const activeDifficulty = useMemo(() => DIFFICULTY[difficulty - 1], [difficulty]);
 
@@ -110,7 +122,16 @@ export default function Home() {
         setHistory(items);
       })
       .catch(() => setToken(""));
+    api<Analytics>("/api/admin/analytics", {}, token)
+      .then((result) => { setCanViewAnalytics(true); setAnalytics(result); })
+      .catch(() => setCanViewAnalytics(false));
   }, [token]);
+
+  async function refreshAnalytics() {
+    if (!token) return;
+    try { setAnalytics(await api<Analytics>("/api/admin/analytics", {}, token)); }
+    catch { setCanViewAnalytics(false); }
+  }
 
   function toggleEquipment(item: string) {
     setEquipment((current) => current.includes(item) ? current.filter((value) => value !== item) : [...current, item]);
@@ -289,9 +310,22 @@ export default function Home() {
         <a className="brand" href="#top" aria-label="SmartBite — главная"><span className="brand-symbol">sb</span><span>smartbite</span></a>
         <div className="top-actions">
           <span className="top-caption">Кухня — ваша. Идеи — наши.</span>
+          {token && canViewAnalytics && <button className="text-button analytics-link" onClick={() => { setAnalyticsOpen(true); void refreshAnalytics(); }}>Аналитика</button>}
           {token ? <button className="account-chip" onClick={() => setAccountOpen(true)}>{email}</button> : <button className="button button-outline" onClick={() => { setError(""); setAccountOpen(true); }}>Войти</button>}
         </div>
       </header>
+
+      {analyticsOpen && analytics && <section className="analytics-panel" aria-label="Аналитика SmartBite">
+        <div className="analytics-title"><div><p className="section-overline">СВОДКА</p><h2>Как пользуются SmartBite</h2></div><button className="text-button" onClick={() => setAnalyticsOpen(false)}>Закрыть</button></div>
+        <div className="analytics-cards">
+          <div><strong>{analytics.users_total}</strong><span>пользователей</span></div>
+          <div><strong>{analytics.users_last_30_days}</strong><span>за последние 30 дней</span></div>
+          <div><strong>{analytics.recipes_total}</strong><span>рецептов создано</span></div>
+          <div><strong>{analytics.likes_total} / {analytics.ratings_total}</strong><span>понравились / оценок</span></div>
+          <div><strong>{analytics.suitable_total}</strong><span>отмечены как подходящие</span></div>
+        </div>
+        <div className="analytics-popular"><h3>Чаще нравятся</h3>{analytics.popular_recipes.length ? analytics.popular_recipes.map((item) => <div key={item.title}><span>{item.title}</span><small>{item.likes} положительных оценок · {item.ratings} всего</small></div>) : <p>Пока нет оценок рецептов.</p>}</div>
+      </section>}
 
       <section className="hero" id="top">
         <div className="hero-text">

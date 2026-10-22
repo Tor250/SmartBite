@@ -27,6 +27,18 @@ button:disabled { cursor: wait; opacity: .58; }
 .brand-symbol { width: 31px; height: 31px; display: grid; place-items: center; border: 1px solid var(--ink); border-radius: 50% 50% 50% 12%; font-size: 12px; letter-spacing: -1.4px; transform: rotate(-8deg); }
 .brand-symbol + span { letter-spacing: -.8px; }
 .top-actions { display: flex; align-items: center; gap: 24px; }
+.analytics-link { font-size: 11px; }
+.analytics-panel { margin: 20px 0 0; padding: 22px; border: 1px solid var(--line); background: #faf8f2; }
+.analytics-title { display: flex; justify-content: space-between; align-items: flex-start; }
+.analytics-title h2 { margin: 0 0 15px; font-size: 22px; font-weight: 600; }
+.analytics-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.analytics-cards > div { display: flex; flex-direction: column; gap: 5px; min-height: 75px; padding: 13px; background: #ecebe2; }
+.analytics-cards strong { font-size: 20px; font-weight: 650; }
+.analytics-cards span, .analytics-popular small { color: var(--muted); font-size: 10px; }
+.analytics-popular { margin-top: 18px; }
+.analytics-popular h3 { margin: 0 0 8px; font-size: 14px; }
+.analytics-popular > div { display: flex; justify-content: space-between; gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 11px; }
+.analytics-popular > p { margin: 0; color: var(--muted); font-size: 11px; }
 .top-caption { color: var(--muted); font-size: 12px; }
 .button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 12px; padding: 0 18px; border: 1px solid transparent; border-radius: 2px; cursor: pointer; font-size: 12px; font-weight: 650; transition: transform .18s ease, background .18s ease; }
 .button:hover:not(:disabled) { transform: translateY(-1px); }
@@ -243,6 +255,7 @@ button:disabled { cursor: wait; opacity: .58; }
   .form-panel { padding: 23px 20px; }
   .recipe-result { padding: 23px 20px; }
   .result-columns { gap: 12px; }
+  .analytics-cards { grid-template-columns: repeat(3, 1fr); }
 }
 @media (max-width: 700px) {
   .page-shell { padding: 0 18px; }
@@ -262,6 +275,9 @@ button:disabled { cursor: wait; opacity: .58; }
   .brand { font-size: 16px; }
   .top-actions { gap: 10px; }
   .account-chip { max-width: 145px; font-size: 9px; }
+  .analytics-panel { padding: 15px; }
+  .analytics-cards { grid-template-columns: repeat(2, 1fr); }
+  .analytics-popular > div { align-items: flex-start; flex-direction: column; gap: 4px; }
   .button-outline { min-height: 33px; padding: 0 13px; font-size: 10px; }
   .hero { grid-template-columns: 1fr; padding-top: 36px; }
   .hero h1 { font-size: 44px; }
