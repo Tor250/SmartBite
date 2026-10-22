@@ -11,7 +11,7 @@ from app.models import Profile, ProfileSetting, Recipe, RecipeIngredientRow, Rec
 @pytest.mark.skipif(engine.dialect.name != "postgresql", reason="Requires the PostgreSQL CI service")
 def test_postgres_round_trips_normalized_recipe_and_profile_rows():
     inspector = inspect(engine)
-    assert {"profile_settings", "recipe_input_products", "recipe_ingredients", "recipe_steps", "recipe_missing_products"}.issubset(
+    assert {"profile_settings", "recipe_input_products", "recipe_ingredients", "recipe_steps", "recipe_missing_products", "recipe_equipment"}.issubset(
         set(inspector.get_table_names())
     )
     assert "preferences" not in {column["name"] for column in inspector.get_columns("profiles")}
@@ -53,6 +53,9 @@ def test_postgres_round_trips_normalized_recipe_and_profile_rows():
                     {"instruction": "Приготовьте с томатами.", "duration_minutes": 18},
                 ],
                 missing_products=[],
+                requested_difficulty=4,
+                request_context="Готовлю без духовки.",
+                equipment=["Микроволновка"],
             )
             session.add(recipe)
             session.commit()
@@ -66,6 +69,9 @@ def test_postgres_round_trips_normalized_recipe_and_profile_rows():
             assert stored.ingredients[0] == {"name": "рис", "quantity": "100 г"}
             assert stored.steps[1] == {"instruction": "Приготовьте с томатами.", "duration_minutes": 18}
             assert stored.missing_products == []
+            assert stored.requested_difficulty == 4
+            assert stored.request_context == "Готовлю без духовки."
+            assert stored.equipment == ["Микроволновка"]
             assert session.query(RecipeIngredientRow).filter_by(recipe_id=recipe_id).count() == 2
             assert session.query(RecipeStepRow).filter_by(recipe_id=recipe_id).count() == 2
             persisted_user = session.get(User, user_id)

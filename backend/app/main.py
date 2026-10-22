@@ -1,5 +1,6 @@
-from typing import Annotated, Literal
 import secrets
+from os import getenv
+from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,9 +27,14 @@ from .safety import check_ingredients
 
 configure_logging()
 app = FastAPI(title="SmartBite API", version="1.0.0")
+cors_origins = [
+    value.strip()
+    for value in getenv("SMARTBITE_CORS_ORIGINS", "http://localhost:3000").split(",")
+    if value.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
@@ -69,9 +75,13 @@ class ProfileResponse(ProfileUpdate):
 
 class GenerateRequest(BaseModel):
     mode: Literal["from_products", "preferences"]
-    products: list[str] = Field(default_factory=list, max_length=40)
+    products: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(default_factory=list, max_length=40)
     description: str | None = Field(default=None, max_length=1000)
-    preferences: list[str] = Field(default_factory=list, max_length=30)
+    preferences: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(default_factory=list, max_length=30)
+    exclusions: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(default_factory=list, max_length=30)
+    difficulty: int | None = Field(default=None, ge=1, le=5)
+    equipment: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(default_factory=list, max_length=12)
+    request_context: str | None = Field(default=None, max_length=1000)
 
 
 class MvpGenerateRequest(BaseModel):
@@ -82,6 +92,9 @@ class MvpGenerateRequest(BaseModel):
     exclusions: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(default_factory=list, max_length=30)
     preferences: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(default_factory=list, max_length=30)
     description: str | None = Field(default=None, max_length=1000)
+    difficulty: int | None = Field(default=None, ge=1, le=5)
+    equipment: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(default_factory=list, max_length=12)
+    request_context: str | None = Field(default=None, max_length=1000)
 
 
 class IngredientResponse(BaseModel):
@@ -101,6 +114,9 @@ class MvpRecipeResponse(BaseModel):
     preparation_time_minutes: int | None = None
     steps: list[StepResponse]
     missing_products: list[str] = Field(default_factory=list)
+    difficulty: int | None = None
+    equipment: list[str] = Field(default_factory=list)
+    request_context: str | None = None
     warning: str
     generator: Literal["demo", "ai"]
 
@@ -109,6 +125,14 @@ class RatingRequest(BaseModel):
     suitable: bool | None = None
     liked: bool | None = None
     review: str | None = Field(default=None, max_length=1000)
+
+
+class RefineRecipeRequest(BaseModel):
+    scope: Literal["clarify", "adjust", "replace"]
+    instruction: str = Field(min_length=1, max_length=1000)
+    difficulty: int | None = Field(default=None, ge=1, le=5)
+    equipment: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(default_factory=list, max_length=12)
+    request_context: str | None = Field(default=None, max_length=1000)
 
 
 class ShareResponse(BaseModel):
@@ -138,6 +162,10 @@ class RecipeResponse(BaseModel):
     suitable: bool | None = None
     liked: bool | None = None
     review: str | None = None
+    difficulty: int | None = None
+    equipment: list[str] = Field(default_factory=list)
+    request_context: str | None = None
+    parent_recipe_id: int | None = None
 
 
 def recipe_response(recipe: Recipe, rating: RecipeRating | None = None) -> RecipeResponse:
@@ -158,6 +186,10 @@ def recipe_response(recipe: Recipe, rating: RecipeRating | None = None) -> Recip
         suitable=rating.suitable if rating else None,
         liked=rating.liked if rating else None,
         review=rating.review if rating else None,
+        difficulty=recipe.requested_difficulty,
+        equipment=recipe.equipment,
+        request_context=recipe.request_context,
+        parent_recipe_id=recipe.parent_recipe_id,
     )
 
 
@@ -189,6 +221,27 @@ def _auth_response(result) -> AuthResponse:
     )
 
 
+def _feedback_preferences(db: Session, user_id: int) -> list[str]:
+    recent = db.execute(
+        select(RecipeRating.liked, RecipeRating.suitable, Recipe.title)
+        .join(Recipe, Recipe.id == RecipeRating.recipe_id)
+        .where(RecipeRating.user_id == user_id)
+        .order_by(RecipeRating.created_at.desc())
+        .limit(10)
+    ).all()
+    liked = [title for liked_value, _suitable, title in recent if liked_value is True][:3]
+    disliked = [title for liked_value, _suitable, title in recent if liked_value is False][:3]
+    unsuitable = [title for _liked, suitable, title in recent if suitable is False][:3]
+    context = []
+    if liked:
+        context.append("Ранее пользователю понравились рецепты: " + ", ".join(liked) + ".")
+    if disliked:
+        context.append("Ранее пользователю не понравились рецепты: " + ", ".join(disliked) + ".")
+    if unsuitable:
+        context.append("Пользователь отметил как неподходящие рецепты: " + ", ".join(unsuitable) + ".")
+    return context
+
+
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -203,6 +256,9 @@ async def generate_mvp_recipe(request: MvpGenerateRequest, http_request: Request
             description=request.description.strip() if request.description else None,
             preferences=[item.strip() for item in request.preferences if item.strip()],
             exclusions=[item.strip() for item in request.exclusions if item.strip()],
+            difficulty=request.difficulty,
+            equipment=request.equipment,
+            request_context=request.request_context,
         )
         candidate = await generation_runner.run(generate_recipe_use_case, command, generator)
     except GenerationBusy:
@@ -257,6 +313,9 @@ async def generate_mvp_recipe(request: MvpGenerateRequest, http_request: Request
         preparation_time_minutes=candidate.preparation_time_minutes,
         steps=[_step_response(item) for item in candidate.steps],
         missing_products=candidate.missing_products,
+        difficulty=candidate.difficulty,
+        equipment=candidate.equipment or [],
+        request_context=candidate.request_context,
         warning=USER_WARNING,
         generator="demo" if isinstance(generator, DemoRecipeGenerator) else "ai",
     )
@@ -329,7 +388,7 @@ async def generate_recipe(
 ) -> RecipeResponse:
     products = [item.strip() for item in request.products if item.strip()]
     description = request.description.strip() if request.description else None
-    preferences = user.profile.preferences if user.profile else []
+    preferences = (user.profile.preferences if user.profile else []) + _feedback_preferences(db, user.id)
     exclusions = user.profile.exclusions if user.profile else []
     try:
         candidate = await generation_runner.run(
@@ -339,7 +398,10 @@ async def generate_recipe(
                 products=products,
                 description=description,
                 preferences=preferences + [item.strip() for item in request.preferences if item.strip()],
-                exclusions=exclusions,
+                exclusions=exclusions + [item.strip() for item in request.exclusions if item.strip()],
+                difficulty=request.difficulty,
+                equipment=request.equipment,
+                request_context=request.request_context,
             ),
             generator,
         )
@@ -370,6 +432,9 @@ async def generate_recipe(
         preparation_time_minutes=candidate.preparation_time_minutes,
         steps=[{"instruction": item.instruction, "duration_minutes": item.duration_minutes} for item in candidate.steps],
         missing_products=candidate.missing_products,
+        requested_difficulty=candidate.difficulty,
+        equipment=candidate.equipment or [],
+        request_context=candidate.request_context,
     )
     has_previous_request = db.scalar(select(UsageEvent.id).where(UsageEvent.user_id == user.id).limit(1))
     db.add(recipe)
@@ -400,6 +465,77 @@ async def recipe_history(user: User = Depends(current_user), db: Session = Depen
         select(Recipe).where(Recipe.user_id == user.id).order_by(Recipe.created_at.desc())
     ).all()
     return [recipe_response(record, record.rating) for record in records]
+
+
+@app.post("/api/recipes/{recipe_id}/refine", response_model=RecipeResponse)
+async def refine_recipe(
+    recipe_id: int,
+    request: RefineRecipeRequest,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> RecipeResponse:
+    source = db.scalar(select(Recipe).where(Recipe.id == recipe_id, Recipe.user_id == user.id))
+    if source is None:
+        raise HTTPException(status_code=404, detail="Рецепт не найден.")
+    old_ingredients = [item["name"] for item in source.ingredients]
+    if request.scope == "replace":
+        scope_instruction = "Предложи полностью другой рецепт, не повторяй исходный вариант."
+    elif request.scope == "adjust":
+        scope_instruction = "Сохрани основу исходного рецепта и внеси только указанные изменения."
+    else:
+        scope_instruction = "Не меняй рецепт; ответь по сути вопроса о нём и сохрани его состав и шаги."
+    description = (
+        f"{scope_instruction}\nИсходный рецепт: {source.title}. "
+        f"Ингредиенты: {', '.join(old_ingredients)}. "
+        f"Шаги: {' '.join(item['instruction'] for item in source.steps)}.\n"
+        f"Запрос пользователя: {request.instruction.strip()}"
+    )
+    profile = user.profile
+    try:
+        candidate = await generation_runner.run(
+            generate_recipe_use_case,
+            GenerateRecipeCommand(
+                mode="preferences",
+                products=old_ingredients,
+                description=description,
+                preferences=(profile.preferences if profile else []) + _feedback_preferences(db, user.id),
+                exclusions=profile.exclusions if profile else [],
+                difficulty=request.difficulty or source.requested_difficulty,
+                equipment=request.equipment or source.equipment,
+                request_context=request.request_context or source.request_context,
+            ),
+            generator,
+        )
+    except RecipeSafetyCheckError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except RecipeRequestError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except RecipeGenerationError as error:
+        raise HTTPException(status_code=503, detail="Не удалось изменить рецепт. Попробуйте ещё раз.") from error
+    except GenerationBusy as error:
+        raise HTTPException(status_code=503, detail="Сервис генерации занят. Попробуйте позже.") from error
+    except GenerationTimedOut as error:
+        raise HTTPException(status_code=503, detail="Генератор не ответил вовремя. Попробуйте позже.") from error
+
+    refined = Recipe(
+        user_id=user.id,
+        parent_recipe_id=source.id,
+        mode="preferences",
+        input_products=old_ingredients,
+        description=description,
+        title=candidate.title,
+        ingredients=[{"name": item.name, "quantity": item.quantity} for item in candidate.ingredients],
+        preparation_time_minutes=candidate.preparation_time_minutes,
+        steps=[{"instruction": item.instruction, "duration_minutes": item.duration_minutes} for item in candidate.steps],
+        missing_products=candidate.missing_products,
+        requested_difficulty=candidate.difficulty,
+        equipment=candidate.equipment or [],
+        request_context=candidate.request_context,
+    )
+    db.add(refined)
+    db.commit()
+    db.refresh(refined)
+    return recipe_response(refined)
 
 
 @app.post("/api/recipes/{recipe_id}/share", response_model=ShareResponse)

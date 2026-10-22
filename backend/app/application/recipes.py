@@ -25,6 +25,9 @@ class GenerateRecipeCommand:
     description: str | None
     preferences: list[str]
     exclusions: list[str]
+    difficulty: int | None = None
+    equipment: list[str] | None = None
+    request_context: str | None = None
 
 
 @dataclass(frozen=True)
@@ -34,12 +37,32 @@ class GeneratedRecipe:
     preparation_time_minutes: int | None
     steps: list[RecipeStep]
     missing_products: list[str]
+    difficulty: int | None = None
+    equipment: list[str] | None = None
+    request_context: str | None = None
 
 
 def generate_recipe(command: GenerateRecipeCommand, generator: RecipeGenerator) -> GeneratedRecipe:
     products = [item.strip() for item in command.products if item.strip()]
     preferences = [item.strip() for item in command.preferences if item.strip()]
-    description = command.description.strip() if command.description else None
+    description_parts = [command.description.strip()] if command.description and command.description.strip() else []
+    if command.difficulty is not None:
+        difficulty_labels = {1: "сложно", 2: "скорее сложно", 3: "средне", 4: "скорее легко", 5: "легко"}
+        if isinstance(command.difficulty, bool) or command.difficulty not in difficulty_labels:
+            raise RecipeRequestError("Уровень сложности должен быть от 1 до 5.")
+        description_parts.append(
+            f"Желаемая сложность готовки: {difficulty_labels[command.difficulty]} "
+            f"({command.difficulty} из 5)."
+        )
+    equipment = [item.strip() for item in (command.equipment or []) if item.strip()]
+    if any(len(item) > 80 for item in equipment):
+        raise RecipeRequestError("Название техники слишком длинное.")
+    if equipment:
+        description_parts.append("Доступная техника: " + ", ".join(equipment) + ". Используй только её.")
+    request_context = command.request_context.strip() if command.request_context else None
+    if request_context:
+        description_parts.append("Дополнительный контекст пользователя: " + request_context)
+    description = "\n".join(description_parts) or None
 
     if command.mode == "from_products" and not products:
         raise RecipeRequestError("Укажите продукты, которые есть дома.")
@@ -122,4 +145,7 @@ def generate_recipe(command: GenerateRecipeCommand, generator: RecipeGenerator) 
         preparation_time_minutes=draft.preparation_time_minutes,
         steps=[RecipeStep(step.instruction.strip(), step.duration_minutes) for step in steps],
         missing_products=[item.strip() for item in draft.missing_products],
+        difficulty=command.difficulty,
+        equipment=equipment,
+        request_context=request_context,
     )

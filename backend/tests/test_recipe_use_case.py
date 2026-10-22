@@ -145,6 +145,44 @@ def test_use_case_keeps_ingredient_quantities_and_allows_missing_cooking_time():
     assert recipe.preparation_time_minutes is None
 
 
+def test_use_case_passes_difficulty_equipment_and_kitchen_context_to_generator():
+    class CapturingGenerator:
+        description = None
+
+        def generate(self, mode, products, preferences, description):
+            self.description = description
+            return RecipeDraft(
+                "Рис с томатом",
+                [RecipeIngredient("рис", "100 г"), RecipeIngredient("томат", "1 шт.")],
+                20,
+                [RecipeStep("Приготовьте продукты.")],
+                [],
+            )
+
+    provider = CapturingGenerator()
+    recipe = generate_recipe(
+        command(
+            difficulty=4,
+            equipment=["Микроволновка"],
+            request_context="Готовлю в общежитии, духовки нет.",
+        ),
+        provider,
+    )
+
+    assert "скорее легко" in provider.description
+    assert "Микроволновка" in provider.description
+    assert "Готовлю в общежитии" in provider.description
+    assert recipe.difficulty == 4
+    assert recipe.equipment == ["Микроволновка"]
+    assert recipe.request_context == "Готовлю в общежитии, духовки нет."
+
+
+@pytest.mark.parametrize("difficulty", [0, 6, True])
+def test_use_case_rejects_difficulty_outside_supported_scale(difficulty):
+    with pytest.raises(RecipeRequestError, match="сложности"):
+        generate_recipe(command(difficulty=difficulty), DemoRecipeGenerator())
+
+
 @pytest.mark.parametrize(
     ("total_time", "step_time", "error_text"),
     [

@@ -352,6 +352,47 @@ def test_user_can_add_like_and_review_to_recipe_rating(api_client):
     assert response.json()["suitable"] is None
 
 
+def test_future_generation_uses_rating_signals_but_not_private_review_text(api_client, monkeypatch):
+    import json
+
+    from app import main
+    from app.generator import StructuredRecipeGenerator
+
+    account = register(api_client)
+    headers = auth(account["access_token"])
+    previous = create_recipe(api_client, headers)
+    api_client.put(
+        f"/api/recipes/{previous['id']}/rating",
+        headers=headers,
+        json={"liked": True, "suitable": True, "review": "Личный комментарий пользователя"},
+    )
+    captured = {}
+
+    class TasteAdapter:
+        def request_json(self, _system_instruction, input_json):
+            captured.update(json.loads(input_json))
+            return json.dumps({
+                "title": "Рис с томатом",
+                "preparation_time_minutes": 15,
+                "ingredients": [
+                    {"name": "рис", "quantity": "100 г"},
+                    {"name": "томат", "quantity": "1 шт."},
+                ],
+                "steps": [{"instruction": "Приготовьте рис с томатом.", "duration_minutes": 15}],
+            }, ensure_ascii=False)
+
+    monkeypatch.setattr(main, "generator", StructuredRecipeGenerator(TasteAdapter()))
+    generated = api_client.post(
+        "/api/recipes/generate",
+        headers=headers,
+        json={"mode": "from_products", "products": ["рис", "томат"]},
+    )
+
+    assert generated.status_code == 200
+    assert any(previous["title"] in value for value in captured["preferences"])
+    assert all("Личный комментарий пользователя" not in value for value in captured["preferences"])
+
+
 def test_user_can_read_full_generation_history(api_client):
     account = register(api_client)
     headers = auth(account["access_token"])
@@ -406,6 +447,73 @@ def test_signed_in_user_can_generate_and_revisit_wishes_mode(api_client, monkeyp
     assert len(history.json()) == 1
     assert history.json()[0]["mode"] == "preferences"
     assert history.json()[0]["title"] == "Рис с томатами"
+
+
+def test_signed_in_generation_persists_difficulty_equipment_and_kitchen_context(api_client):
+    account = register(api_client)
+    headers = auth(account["access_token"])
+
+    generated = api_client.post(
+        "/api/recipes/generate",
+        headers=headers,
+        json={
+            "mode": "from_products",
+            "products": ["рис", "томат"],
+            "difficulty": 2,
+            "equipment": ["Микроволновка"],
+            "request_context": "Готовлю в общежитии.",
+        },
+    )
+    history = api_client.get("/api/recipes/history", headers=headers)
+
+    assert generated.status_code == 200
+    assert generated.json()["difficulty"] == 2
+    assert generated.json()["equipment"] == ["Микроволновка"]
+    assert generated.json()["request_context"] == "Готовлю в общежитии."
+    assert history.json()[0]["equipment"] == ["Микроволновка"]
+    assert history.json()[0]["request_context"] == "Готовлю в общежитии."
+
+
+def test_recipe_refinement_stores_parent_and_preserves_account_isolation(api_client, monkeypatch):
+    import json
+
+    from app import main
+    from app.generator import StructuredRecipeGenerator
+
+    class RefinementAdapter:
+        def request_json(self, _system_instruction, _input_json):
+            return json.dumps({
+                "title": "Рис с томатами по-новому",
+                "preparation_time_minutes": 20,
+                "ingredients": [
+                    {"name": "рис", "quantity": "100 г"},
+                    {"name": "томат", "quantity": "1 шт."},
+                ],
+                "steps": [{"instruction": "Приготовьте рис с томатами.", "duration_minutes": 20}],
+            }, ensure_ascii=False)
+
+    monkeypatch.setattr(main, "generator", StructuredRecipeGenerator(RefinementAdapter()))
+    owner = register(api_client, "refine-owner@example.org")
+    other = register(api_client, "refine-other@example.org")
+    owner_headers = auth(owner["access_token"])
+    source = create_recipe(api_client, owner_headers)
+
+    refined = api_client.post(
+        f"/api/recipes/{source['id']}/refine",
+        headers=owner_headers,
+        json={"scope": "replace", "instruction": "Сделай вкус более свежим", "equipment": ["Плита"]},
+    )
+    forbidden = api_client.post(
+        f"/api/recipes/{source['id']}/refine",
+        headers=auth(other["access_token"]),
+        json={"scope": "adjust", "instruction": "Замени томат"},
+    )
+
+    assert refined.status_code == 200
+    assert refined.json()["title"] == "Рис с томатами по-новому"
+    assert refined.json()["parent_recipe_id"] == source["id"]
+    assert refined.json()["equipment"] == ["Плита"]
+    assert forbidden.status_code == 404
 
 
 def test_user_can_share_recipe_by_revocable_public_link(api_client):

@@ -17,6 +17,7 @@ services:
     build: ./backend
     environment:
       DATABASE_URL: postgresql+psycopg://smartbite:smartbite-local@db:5432/smartbite
+      SMARTBITE_CORS_ORIGINS: ${SMARTBITE_CORS_ORIGINS:-http://localhost:3000}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       SMARTBITE_GEMINI_MODEL: ${SMARTBITE_GEMINI_MODEL:-gemini-3.5-flash-lite}
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}

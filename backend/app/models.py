@@ -114,6 +114,11 @@ class Recipe(Base):
     title: Mapped[str] = mapped_column(String(200))
     preparation_time_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     share_token: Mapped[str | None] = mapped_column(String(64), unique=True, index=True, nullable=True)
+    requested_difficulty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    request_context: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    parent_recipe_id: Mapped[int | None] = mapped_column(
+        ForeignKey("recipes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     user: Mapped[User] = relationship(back_populates="recipes")
@@ -139,6 +144,11 @@ class Recipe(Base):
         back_populates="recipe",
         cascade="all, delete-orphan",
         order_by="RecipeMissingProduct.position",
+    )
+    equipment_rows: Mapped[list["RecipeEquipment"]] = relationship(
+        back_populates="recipe",
+        cascade="all, delete-orphan",
+        order_by="RecipeEquipment.position",
     )
 
     @property
@@ -205,6 +215,29 @@ class Recipe(Base):
             RecipeMissingProduct(position=position, name=value)
             for position, value in enumerate(values)
         ]
+
+    @property
+    def equipment(self) -> list[str]:
+        return [item.name for item in self.equipment_rows]
+
+    @equipment.setter
+    def equipment(self, values: list[str]) -> None:
+        self.equipment_rows = [
+            RecipeEquipment(position=position, name=value)
+            for position, value in enumerate(values)
+        ]
+
+
+class RecipeEquipment(Base):
+    __tablename__ = "recipe_equipment"
+
+    recipe_id: Mapped[int] = mapped_column(
+        ForeignKey("recipes.id", ondelete="CASCADE"), primary_key=True
+    )
+    position: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+
+    recipe: Mapped[Recipe] = relationship(back_populates="equipment_rows")
 
 
 class RecipeInputProduct(Base):

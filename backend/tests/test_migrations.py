@@ -93,6 +93,9 @@ def test_normalization_migration_preserves_existing_data(tmp_path, monkeypatch):
         assert {"liked", "review"} <= {
             column["name"] for column in inspect(connection).get_columns("recipe_ratings")
         }
+        recipe_columns = {column["name"] for column in inspect(connection).get_columns("recipes")}
+        assert {"requested_difficulty", "request_context", "parent_recipe_id"} <= recipe_columns
+        assert {"recipe_equipment"} <= set(inspect(connection).get_table_names())
     engine.dispose()
 
 

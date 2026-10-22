@@ -69,6 +69,23 @@ def test_anonymous_preferences_generation_marks_products_to_buy(api_client):
     assert response.json()["missing_products"] == ["томат", "лук"]
 
 
+def test_anonymous_generation_returns_requested_cooking_context(api_client):
+    response = api_client.post(
+        "/api/v1/recipes/generate",
+        json={
+            "products": ["рис", "томат"],
+            "difficulty": 4,
+            "equipment": ["Микроволновка"],
+            "request_context": "Готовлю в общежитии, духовки нет.",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["difficulty"] == 4
+    assert response.json()["equipment"] == ["Микроволновка"]
+    assert response.json()["request_context"] == "Готовлю в общежитии, духовки нет."
+
+
 def test_browser_preflight_allows_request_correlation_header(api_client):
     response = api_client.request(
         "OPTIONS",
