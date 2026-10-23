@@ -1,6 +1,6 @@
 # Архитектурные материалы
 
-- [C4: Context, Container, компоненты и итерации](c4.md)
+- [C4: контекст, контейнеры и компоненты](c4.md)
 - [Целевая архитектура полного продукта](target-architecture.md)
 - [REST-контракт OpenAPI](openapi.yaml)
 - [Контракт JSON генератора рецептов](recipe-json-contract.md)
